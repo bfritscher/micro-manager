@@ -5,9 +5,9 @@
 //-----------------------------------------------------------------------------
 // DESCRIPTION:   OpenCVgrabber utilises the easy image capture interface provided
 //                by highgui in the OpenCV project, supporting almost any WDM or DirectShow image capture hardware
-//                
+//
 // AUTHOR:        (Original file - democamera.h) Nenad Amodaj, nenad@amodaj.com, 06/08/2005
-//                
+//
 //                (Original file - democamera.h) Karl Hoover (stuff such as programmable CCD size  & the various image processors)
 //                (Original file - democamera.h) Arther Edelstein ( equipment error simulation)
 //				  Ed Simmons OpenCVgrabber.h 2011
@@ -37,6 +37,7 @@
 #include <string>
 #include <map>
 #include <algorithm>
+#include "DeviceEnumerator.h"
 
 #ifdef _MSC_VER
 #pragma warning(push)
@@ -65,19 +66,19 @@
 
 class MySequenceThread;
 
-class COpenCVgrabber : public CCameraBase<COpenCVgrabber>  
+class COpenCVgrabber : public CCameraBase<COpenCVgrabber>
 {
 public:
    COpenCVgrabber();
    ~COpenCVgrabber();
-  
+
    // MMDevice API
    // ------------
    int Initialize();
    int Shutdown();
-  
-   void GetName(char* name) const;      
-   
+
+   void GetName(char* name) const;
+
    // MMCamera API
    // ------------
    int SnapImage();
@@ -91,8 +92,8 @@ public:
    long GetImageBufferSize() const;
    double GetExposure() const;
    void SetExposure(double exp);
-   int SetROI(unsigned x, unsigned y, unsigned xSize, unsigned ySize); 
-   int GetROI(unsigned& x, unsigned& y, unsigned& xSize, unsigned& ySize); 
+   int SetROI(unsigned x, unsigned y, unsigned xSize, unsigned ySize);
+   int GetROI(unsigned& x, unsigned& y, unsigned& xSize, unsigned& ySize);
    int ClearROI();
    int PrepareSequenceAcqusition()
    {
@@ -104,7 +105,7 @@ public:
    int InsertImage();
    int ThreadRun();
    bool IsCapturing();
-   void OnThreadExiting() throw(); 
+   void OnThreadExiting() throw();
    double GetNominalPixelSizeUm() const {return nominalPixelSizeUm_;}
    double GetPixelSizeUm() const {return nominalPixelSizeUm_ * GetBinning();}
    int GetBinning() const;
@@ -167,7 +168,7 @@ private:
    bool stopOnOverFlow_;
 
    MMThreadLock imgPixelsLock_;
-   
+
 
    friend class MySequenceThread;
    MySequenceThread * thd_;
@@ -186,29 +187,29 @@ class MySequenceThread : public MMDeviceThreadBase
       void Suspend();
       bool IsSuspended();
       void Resume();
-      double GetIntervalMs(){return intervalMs_;}                               
-      void SetLength(long images) {numImages_ = images;}                        
+      double GetIntervalMs(){return intervalMs_;}
+      void SetLength(long images) {numImages_ = images;}
       long GetLength() const {return numImages_;}
-      long GetImageCounter(){return imageCounter_;}                             
-      MM::MMTime GetStartTime(){return startTime_;}                             
+      long GetImageCounter(){return imageCounter_;}
+      MM::MMTime GetStartTime(){return startTime_;}
       MM::MMTime GetActualDuration(){return actualDuration_;}
 
-   private:                                                                     
+   private:
       int svc(void) throw();
 
-      double intervalMs_;                                                       
-      long numImages_;                                                          
-      long imageCounter_;                                                       
-      bool stop_;                                                               
-      bool suspend_;                                                            
-      COpenCVgrabber* camera_;   
-      MM::MMTime startTime_;                                                    
-      MM::MMTime actualDuration_;                                               
-      MM::MMTime lastFrameTime_;                                                
+      double intervalMs_;
+      long numImages_;
+      long imageCounter_;
+      bool stop_;
+      bool suspend_;
+      COpenCVgrabber* camera_;
+      MM::MMTime startTime_;
+      MM::MMTime actualDuration_;
+      MM::MMTime lastFrameTime_;
 
-      MMThreadLock stopLock_;                                                   
-      MMThreadLock suspendLock_;                                                
-}; 
+      MMThreadLock stopLock_;
+      MMThreadLock suspendLock_;
+};
 
 
 

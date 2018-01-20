@@ -5,11 +5,11 @@
 //-----------------------------------------------------------------------------
 // DESCRIPTION:   Implements capture_ from DirectShow and WDM class drivers on Windows, V4L2 on Linux
 //                Based heavily on the demo camera project.
-//                
+//
 // AUTHOR:        Ed Simmons ed@esimaging.co.uk
 //				  http://www.esimaging.co.uk
 //
-// 
+//
 // COPYRIGHT:     Ed Simmons 2011
 //				  ESImaging 2011
 //
@@ -48,6 +48,7 @@ const double COpenCVgrabber::nominalPixelSizeUm_ = 1.0;
 // External names used used by the rest of the system
 // to load particular device from the "DemoCamera.dll" library
 const char* g_CameraDeviceName = "OpenCVgrabber";
+const char* cIDName = "Camera";
 
 // constants for naming pixel types (allowed values of the "PixelType" property)
 const char* g_PixelType_8bit = "8bit";
@@ -57,15 +58,15 @@ const char* g_PixelType_32bitRGB = "32bitRGB";
 const char* g_Keyword_Resolution = "Resolution";
 
 const char* g_Res0 = "320x200";// cga
-const char* g_Res1 = "320x240";//qvga 
-const char* g_Res2 = "340x256"; 
-const char* g_Res3 = "480x320"; 
-const char* g_Res4 = "640x480";//vga 
-const char* g_Res5 = "680x512"; 
+const char* g_Res1 = "320x240";//qvga
+const char* g_Res2 = "340x256";
+const char* g_Res3 = "480x320";
+const char* g_Res4 = "640x480";//vga
+const char* g_Res5 = "680x512";
 const char* g_Res6 = "720x480";
 const char* g_Res7 = "720x576";
 const char* g_Res8 = "768x512";
-const char* g_Res9 = "768x576";//pal 
+const char* g_Res9 = "768x576";//pal
 const char* g_Res10 = "800x480";//wvga
 const char* g_Res11 = "800x600";
 const char* g_Res12 = "854x480";//wvga
@@ -161,12 +162,15 @@ COpenCVgrabber::COpenCVgrabber() :
    SetErrorText(CAMERA_NOT_INITIALIZED, "Camera was not initialized");
 
    CPropertyAction* pAct = new CPropertyAction(this, &COpenCVgrabber::OnCameraID);
-   String cIDName = "Camera Number";
-   CreateProperty(cIDName.c_str(), "0", MM::Integer, false, pAct, true);
-   AddAllowedValue(cIDName.c_str(), "0");
-   AddAllowedValue(cIDName.c_str(), "1");
-   AddAllowedValue(cIDName.c_str(), "2");
-   AddAllowedValue(cIDName.c_str(), "3");
+   CreateProperty(cIDName, "Undefined", MM::String, false, pAct, true);
+
+   DeviceEnumerator de;
+   // Video Devices
+   map<int, OpenCVDevice> devices = de.getVideoDevicesMap();
+
+   for (auto const &device : devices) {
+	   AddAllowedValue(cIDName, device.second.deviceName.c_str(), long(device.first));
+   }
 
    readoutStartTime_ = GetCurrentMMTime();
    thd_ = new MySequenceThread(this);
@@ -216,9 +220,9 @@ int COpenCVgrabber::Initialize()
 
    // init the hardware
 
-   // start opencv capture_ from first device, 
+   // start opencv capture_ from first device,
    // we need to initialise hardware early on to discover properties
-   capture_ = cvCaptureFromCAM(CV_CAP_ANY);
+   capture_ = cvCaptureFromCAM(cameraID_);
    if (!capture_) // do we have a capture_ device?
    {
      return DEVICE_NOT_CONNECTED;
@@ -285,7 +289,7 @@ int COpenCVgrabber::Initialize()
    vector<string> pixelTypeValues;
    pixelTypeValues.push_back(g_PixelType_8bit);
    pixelTypeValues.push_back(g_PixelType_32bitRGB);
-   
+
    nRet = SetAllowedValues(MM::g_Keyword_PixelType, pixelTypeValues);
    if (nRet != DEVICE_OK)
       return nRet;
@@ -301,7 +305,7 @@ int COpenCVgrabber::Initialize()
    nRet = SetAllowedValues("BitDepth", bitDepths);
    if (nRet != DEVICE_OK)
       return nRet;
-   
+
    // Resolution
 
 
@@ -357,7 +361,7 @@ int COpenCVgrabber::Initialize()
    // camera offset
    nRet = CreateProperty(MM::g_Keyword_Offset, "0", MM::Integer, false);
    assert(nRet == DEVICE_OK);
- 
+
    // readout time
    pAct = new CPropertyAction (this, &COpenCVgrabber::OnReadoutTime);
    nRet = CreateProperty(MM::g_Keyword_ReadoutTime, "0", MM::Float, false, pAct);
@@ -368,8 +372,8 @@ int COpenCVgrabber::Initialize()
    CreateProperty("OnCameraCCDXSize", /*"512"*/CDeviceUtils::ConvertToString(w), MM::Integer, true, pAct);
    pAct = new CPropertyAction (this, &COpenCVgrabber::OnCameraCCDYSize);
    CreateProperty("OnCameraCCDYSize", /*"512"*/CDeviceUtils::ConvertToString(h), MM::Integer, true, pAct);
- 
-   
+
+
    pAct = new CPropertyAction (this, &COpenCVgrabber::OnFlipX);
    CreateProperty("Flip X","0",MM::Integer,false,pAct);
    SetPropertyLimits("Flip X",0,1);
@@ -419,7 +423,7 @@ int COpenCVgrabber::Shutdown()
 
 /**
 * Performs exposure and grabs a single image.
-* This function should block during the actual exposure and return immediately afterwards 
+* This function should block during the actual exposure and return immediately afterwards
 * (i.e., before readout).  This behavior is needed for proper synchronization with the shutter.
 * Required by the MM::Camera API.
 */
@@ -433,7 +437,7 @@ int COpenCVgrabber::SnapImage()
    double expUs = exp * 1000.0;
 
    cvGrabFrame(capture_);
-   
+
    MM::MMTime s0(0,0);
    MM::MMTime t2 = GetCurrentMMTime();
    if( s0 < startTime )
@@ -451,7 +455,7 @@ int COpenCVgrabber::SnapImage()
       // called without the core callback probably in off line test program
       // need way to build the core in the test program
 
-   }   
+   }
    readoutStartTime_ = GetCurrentMMTime();
 
    return DEVICE_OK;
@@ -486,7 +490,7 @@ const unsigned char* COpenCVgrabber::GetImageBuffer()
    if(!temp) return 0;
    //Mat temp_mat (temp);
 
-   if(xFlip_ == true){ 
+   if(xFlip_ == true){
       cvFlip(temp,NULL,1);
    }
    if(yFlip_ == true){
@@ -527,7 +531,7 @@ const unsigned char* COpenCVgrabber::GetImageBuffer()
          if(!ROI) return 0; //failed to create ROI image
          cvCopy(temp,ROI,NULL);
          cvResetImageROI(temp);
-         RGB3toRGB4(temp->imageData, (char *) img_.GetPixelsRW(), ROI->width, ROI->height);		
+         RGB3toRGB4(temp->imageData, (char *) img_.GetPixelsRW(), ROI->width, ROI->height);
          //cvCvtColor(&ROI,(CvArr *) temp->imageData,CV_RGB2RGBA);// possible alternative to the padding loop - if I can get it not to break!
          cvReleaseImage(&ROI);
       }
@@ -537,7 +541,7 @@ const unsigned char* COpenCVgrabber::GetImageBuffer()
       for(int i=0; i < temp->width * temp->height; i++){
          memcpy(img_.GetPixelsRW()+i, temp->imageData+srcOffset,1);
          srcOffset += 3;
-      } 
+      }
    }
 
 
@@ -588,7 +592,7 @@ unsigned COpenCVgrabber::GetImageHeight() const
 unsigned COpenCVgrabber::GetImageBytesPerPixel() const
 {
    return img_.Depth();
-} 
+}
 
 /**
 * Returns the bit depth (dynamic range) of the pixel.
@@ -670,7 +674,7 @@ int COpenCVgrabber::ClearROI()
    ResizeImageBuffer();
    roiX_ = 0;
    roiY_ = 0;
-      
+
    return DEVICE_OK;
 }
 
@@ -690,7 +694,7 @@ double COpenCVgrabber::GetExposure() const
    if (ret != DEVICE_OK)
       return 0.0;
    return atof(buf); // just return the exposure MM thinks it is using
-   
+
 }
 
 /**
@@ -700,8 +704,8 @@ double COpenCVgrabber::GetExposure() const
 void COpenCVgrabber::SetExposure(double exp)
 {
    SetProperty(MM::g_Keyword_Exposure, CDeviceUtils::ConvertToString(exp));
-   cvSetCaptureProperty(capture_,CV_CAP_PROP_EXPOSURE,(long)exp); 
-   // there is no benefit from checking if this works (many capture_ drivers via opencv 
+   cvSetCaptureProperty(capture_,CV_CAP_PROP_EXPOSURE,(long)exp);
+   // there is no benefit from checking if this works (many capture_ drivers via opencv
    // just don't allow this) - just carry on regardless.
 }
 
@@ -728,7 +732,7 @@ int COpenCVgrabber::SetBinning(int binF)
    return SetProperty(MM::g_Keyword_Binning, CDeviceUtils::ConvertToString(binF));
 }
 
-int COpenCVgrabber::SetAllowedBinning() 
+int COpenCVgrabber::SetAllowedBinning()
 {
    vector<string> binValues;
    binValues.push_back("1");
@@ -744,22 +748,22 @@ int COpenCVgrabber::SetAllowedBinning()
  * The Base class implementation is deprecated and will be removed shortly
  */
 int COpenCVgrabber::StartSequenceAcquisition(double interval) {
-   return StartSequenceAcquisition(LONG_MAX, interval, false);            
+   return StartSequenceAcquisition(LONG_MAX, interval, false);
 }
 
-/**                                                                       
-* Stop and wait for the Sequence thread finished                                   
-*/                                                                        
-int COpenCVgrabber::StopSequenceAcquisition()                                     
-{                                                                         
+/**
+* Stop and wait for the Sequence thread finished
+*/
+int COpenCVgrabber::StopSequenceAcquisition()
+{
 
    if (!thd_->IsStopped()) {
-      thd_->Stop();                                                       
-      thd_->wait();                                                       
-   }                                                                      
-                                                                          
-   return DEVICE_OK;                                                      
-} 
+      thd_->Stop();
+      thd_->wait();
+   }
+
+   return DEVICE_OK;
+}
 
 /**
 * Simple implementation of Sequence Acquisition
@@ -790,22 +794,22 @@ int COpenCVgrabber::InsertImage()
    MM::MMTime timeStamp = this->GetCurrentMMTime();
    char label[MM::MaxStrLength];
    this->GetLabel(label);
- 
+
    // Important:  metadata about the image are generated here:
    Metadata md;
    md.put("Camera", label);
    md.put(MM::g_Keyword_Metadata_StartTime, CDeviceUtils::ConvertToString(sequenceStartTime_.getMsec()));
    md.put(MM::g_Keyword_Elapsed_Time_ms, CDeviceUtils::ConvertToString((timeStamp - sequenceStartTime_).getMsec()));
    md.put(MM::g_Keyword_Metadata_ImageNumber, CDeviceUtils::ConvertToString(imageCounter_));
-   md.put(MM::g_Keyword_Metadata_ROI_X, CDeviceUtils::ConvertToString( (long) roiX_)); 
-   md.put(MM::g_Keyword_Metadata_ROI_Y, CDeviceUtils::ConvertToString( (long) roiY_)); 
-   
+   md.put(MM::g_Keyword_Metadata_ROI_X, CDeviceUtils::ConvertToString( (long) roiX_));
+   md.put(MM::g_Keyword_Metadata_ROI_Y, CDeviceUtils::ConvertToString( (long) roiY_));
+
    imageCounter_++;
-   
+
    char buf[MM::MaxStrLength];
    GetProperty(MM::g_Keyword_Binning, buf);
    md.put(MM::g_Keyword_Binning, buf);
-   
+
    MMThreadGuard g(imgPixelsLock_);
 
 
@@ -828,12 +832,12 @@ int COpenCVgrabber::InsertImage()
 
 /*
  * Do actual capturing
- * Called from inside the thread  
+ * Called from inside the thread
  */
 int COpenCVgrabber::ThreadRun (void)
 {
    int ret=DEVICE_ERR;
-   
+
    // Trigger
    if (triggerDevice_.length() > 0) {
       MM::Device* triggerDev = GetDevice(triggerDevice_.c_str());
@@ -844,7 +848,7 @@ int COpenCVgrabber::ThreadRun (void)
       	triggerDev->SetProperty("Trigger","+");
       }
    }
-      
+
    ret = SnapImage();
    if (ret != DEVICE_OK) return ret;
 
@@ -859,7 +863,7 @@ bool COpenCVgrabber::IsCapturing() {
 }
 
 /*
- * called from the thread function before exit 
+ * called from the thread function before exit
  */
 void COpenCVgrabber::OnThreadExiting() throw()
 {
@@ -932,10 +936,10 @@ void MySequenceThread::Resume() {
 int MySequenceThread::svc(void) throw()
 {
    int ret=DEVICE_ERR;
-   try 
+   try
    {
       do
-      {  
+      {
          ret=camera_->ThreadRun();
       } while (DEVICE_OK == ret && !IsStopped() && imageCounter_++ < numImages_-1);
       if (IsStopped())
@@ -969,7 +973,7 @@ int COpenCVgrabber::OnContrast(MM::PropertyBase* pProp, MM::ActionType eAct)
 		 ret = TS1000IICameraSetContrast(contrast);
 		 if(ret!=STATUS_OK) return DEVICE_ERR;
 		 ret=DEVICE_OK;
-		 			
+
       }break;
    case MM::BeforeGet:
       {
@@ -980,7 +984,7 @@ int COpenCVgrabber::OnContrast(MM::PropertyBase* pProp, MM::ActionType eAct)
 			pProp->Set((double)contrast);
       }break;
    }
-   return ret; 
+   return ret;
 }
 */
 
@@ -992,16 +996,16 @@ int COpenCVgrabber::OnFlipX(MM::PropertyBase* pProp, MM::ActionType eAct)
    {
    case MM::AfterSet:
       {
-         
+
          long val=0;
          pProp->Get(val);
          xFlip_ = (val != 0);
-         
+
 		   ret=DEVICE_OK;
       }break;
    case MM::BeforeGet:
       {
-         
+
 			pProp->Set((long)xFlip_);
          ret=DEVICE_OK;
       } break;
@@ -1014,7 +1018,7 @@ int COpenCVgrabber::OnFlipX(MM::PropertyBase* pProp, MM::ActionType eAct)
       return DEVICE_PROPERTY_NOT_SEQUENCEABLE;
       break;
    }
-   return ret; 
+   return ret;
 }
 
 int COpenCVgrabber::OnFlipY(MM::PropertyBase* pProp, MM::ActionType eAct)
@@ -1024,16 +1028,16 @@ int COpenCVgrabber::OnFlipY(MM::PropertyBase* pProp, MM::ActionType eAct)
    {
    case MM::AfterSet:
       {
-         
+
          long val=0;
          pProp->Get(val);
          yFlip_ = (val != 0);
-         
+
 		   ret=DEVICE_OK;
       }break;
    case MM::BeforeGet:
       {
-         
+
 			pProp->Set((long)yFlip_);
          ret=DEVICE_OK;
       }break;
@@ -1046,17 +1050,16 @@ int COpenCVgrabber::OnFlipY(MM::PropertyBase* pProp, MM::ActionType eAct)
       return DEVICE_PROPERTY_NOT_SEQUENCEABLE;
       break;
    }
-   return ret; 
+   return ret;
 }
 
 int COpenCVgrabber::OnCameraID(MM::PropertyBase* pProp, MM::ActionType eAct)
 {
-   if (eAct == MM::AfterSet)
+	if (eAct == MM::AfterSet)
    {
-      pProp->Get(cameraID_);
-   } else if (eAct == MM::BeforeGet)
-   {
-      pProp->Set(cameraID_);
+		string srcName;
+		pProp->Get(srcName);
+	   GetPropertyData(cIDName, srcName.c_str(), cameraID_);
    }
 
    return DEVICE_OK;
@@ -1080,7 +1083,7 @@ int COpenCVgrabber::OnGain(MM::PropertyBase* pProp, MM::ActionType eAct)
       }break;
    case MM::BeforeGet:
       {
-         
+
 		 double gain;
 		 gain = cvGetCaptureProperty(capture_,CV_CAP_PROP_GAIN);
 		 if(!gain) return DEVICE_ERR;
@@ -1096,7 +1099,7 @@ int COpenCVgrabber::OnGain(MM::PropertyBase* pProp, MM::ActionType eAct)
       return DEVICE_PROPERTY_NOT_SEQUENCEABLE;
       break;
    }
-   return ret; 
+   return ret;
 }
 
 // handles saturation property
@@ -1127,7 +1130,7 @@ int COpenCVgrabber::OnSaturation(MM::PropertyBase* pProp, MM::ActionType eAct)
 			pProp->Set((double)sat);
       }break;
    }
-   return ret; 
+   return ret;
 }
 */
 /**
@@ -1171,7 +1174,7 @@ int COpenCVgrabber::OnBinning(MM::PropertyBase* pProp, MM::ActionType eAct)
       return DEVICE_PROPERTY_NOT_SEQUENCEABLE;
       break;
    }
-   return ret; 
+   return ret;
 }
 
 /**
@@ -1219,7 +1222,7 @@ int COpenCVgrabber::OnPixelType(MM::PropertyBase* pProp, MM::ActionType eAct)
       {
 
          ret=DEVICE_OK;
-		 
+
       }break;
    case MM::NoAction:
       break;
@@ -1230,7 +1233,7 @@ int COpenCVgrabber::OnPixelType(MM::PropertyBase* pProp, MM::ActionType eAct)
       return DEVICE_PROPERTY_NOT_SEQUENCEABLE;
       break;
    }
-   return ret; 
+   return ret;
 }
 
 /**
@@ -1279,10 +1282,10 @@ int COpenCVgrabber::OnBitDepth(MM::PropertyBase* pProp, MM::ActionType eAct)
             break;
             case 32:
                bytesPerComponent = 4;
-               bitDepth_ = 32; 
+               bitDepth_ = 32;
                ret=DEVICE_OK;
             break;
-            default: 
+            default:
                // on error switch to default pixel type
 					bytesPerComponent = 1;
 
@@ -1295,7 +1298,7 @@ int COpenCVgrabber::OnBitDepth(MM::PropertyBase* pProp, MM::ActionType eAct)
 			GetProperty(MM::g_Keyword_PixelType, buf);
 			std::string pixelType(buf);
 			unsigned int bytesPerPixel = 1;
-			
+
 
          // automagickally change pixel type when bit depth exceeds possible value
          if (pixelType.compare(g_PixelType_8bit) == 0)
@@ -1306,7 +1309,7 @@ int COpenCVgrabber::OnBitDepth(MM::PropertyBase* pProp, MM::ActionType eAct)
 			{
 				bytesPerPixel = 4;
 			}
-			
+
 			img_.Resize(img_.Width(), img_.Height(), bytesPerPixel);
 
       } break;
@@ -1324,7 +1327,7 @@ int COpenCVgrabber::OnBitDepth(MM::PropertyBase* pProp, MM::ActionType eAct)
       return DEVICE_PROPERTY_NOT_SEQUENCEABLE;
       break;
    }
-   return ret; 
+   return ret;
 }
 /**
 * Handles "Resolution" property.
@@ -1336,7 +1339,7 @@ int COpenCVgrabber::OnResolution(MM::PropertyBase* pProp, MM::ActionType eAct)
    {
    case MM::AfterSet:
       {
-		 
+
        if(IsCapturing())
           return DEVICE_CAMERA_BUSY_ACQUIRING;
 
@@ -1347,7 +1350,7 @@ int COpenCVgrabber::OnResolution(MM::PropertyBase* pProp, MM::ActionType eAct)
 		 string width, height;
 		 getline(iss,width,'x');
 		 getline(iss,height);
-		 
+
 		 long w = atoi(width.c_str());
 		 long h = atoi(height.c_str());
 
@@ -1368,7 +1371,7 @@ int COpenCVgrabber::OnResolution(MM::PropertyBase* pProp, MM::ActionType eAct)
 		  oss << CDeviceUtils::ConvertToString(cameraCCDXSize_) << "x";
 		  oss << CDeviceUtils::ConvertToString(cameraCCDYSize_);
 		  pProp->Set(oss.str().c_str());
-		  
+
          ret=DEVICE_OK;
       } break;
    case MM::NoAction:
@@ -1380,7 +1383,7 @@ int COpenCVgrabber::OnResolution(MM::PropertyBase* pProp, MM::ActionType eAct)
       return DEVICE_PROPERTY_NOT_SEQUENCEABLE;
       break;
    }
-   return ret; 
+   return ret;
 }
 
 /**
@@ -1410,7 +1413,7 @@ int COpenCVgrabber::OnReadoutTime(MM::PropertyBase* pProp, MM::ActionType eAct)
 * Changes allowed Binning values to test whether the UI updates properly
 */
 int COpenCVgrabber::OnScanMode(MM::PropertyBase* pProp, MM::ActionType eAct)
-{ 
+{
 
    if (eAct == MM::AfterSet) {
       pProp->Get(scanMode_);
@@ -1521,7 +1524,7 @@ int COpenCVgrabber::ResizeImageBuffer()
 	{
       byteDepth = 4;
 	}
-	
+
    img_.Resize(cameraCCDXSize_/binSize_, cameraCCDYSize_/binSize_, byteDepth);
    return DEVICE_OK;
 }
